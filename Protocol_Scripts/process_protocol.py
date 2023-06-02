@@ -18,8 +18,8 @@ from .processing_scripts.k5_processer import process_k5, process_labels, process
 from .processing_scripts.actiheart_processer import process_actiheart, plot_actiheart_hr, process_actiheart_sleep
 from .processing_scripts.process_camp_diary import process_observations
 from .processing_scripts.process_home_diary import process_daily_diary
-
-
+from .processing_scripts.add_fitabase_column import gen_file_fitabase_column_agg
+from .processing_scripts.add_fitabase_column import gen_file_fitabase_column_aligned
 def process_participant(in_path, v_drive, protocol='PA'):
     # Pulls meta data from protocol tracking sheet for particular participant
     # List used to keep track of devices processed
@@ -157,6 +157,9 @@ def process_participant(in_path, v_drive, protocol='PA'):
         output_path = fitbit_path + "/Processed Data/" + participant_num
 
         summarize(4, output_path, devices[-1][1], trial_start, trial_end, fitabase)
+
+
+
         print("FINISHED")
 
     # Process Garmin Data
@@ -270,6 +273,36 @@ def process_participant(in_path, v_drive, protocol='PA'):
     print("Aggregating Data")
     agg_to_sec(devices, in_path, participant_num, protocol, activities, flags)
 
+    #Get the Fitabase HR and put it into align and agg for Sleep
+
+    if(protocol=="Sleep"):
+        fitbit_path = in_path + "/Fitbit/"
+        fitabase_hr = fitbit_path + "Fitabase/" + participant_num + "_hr.csv"
+        agg_hr = in_path + "/" + participant_num + "_agg.csv"
+        aligned_hr = in_path + "/" + participant_num + "_aligned.csv"
+        gen_file_fitabase_column_agg(agg_hr, fitabase_hr)
+        gen_file_fitabase_column_aligned(aligned_hr,fitabase_hr)
+    elif(protocol=="PA"):
+        fitbit_path = in_path + "/Fitbit data/"
+        fitabase_hr = fitbit_path + "Fitabase/" + participant_num + "_hr.csv"
+        agg_hr = in_path + "/" + participant_num + "_agg.csv"
+        aligned_hr=in_path + "/" + participant_num + "_aligned.csv"
+        gen_file_fitabase_column_agg(agg_hr, fitabase_hr)
+        gen_file_fitabase_column_aligned(aligned_hr,fitabase_hr)
+    elif(protocol[:2] == 'FL'):
+
+        fitabase_hr= in_path + "/Fitbit data/"+"Fitabase/"+participant_num + "_hr.csv"
+        agg_hr=in_path+"/"+participant_num+"_agg.csv"
+
+
+        aligned_hr = in_path + "/" + participant_num + "_aligned.csv"
+
+
+
+
+        gen_file_fitabase_column_agg(agg_hr, fitabase_hr)
+        gen_file_fitabase_column_aligned(aligned_hr, fitabase_hr)
+
     print("ALL DONE")
 
 
@@ -310,6 +343,7 @@ def process_pa():
     if not os.path.isdir(v_dir):
         v_dir = "V:/ACOI/R01 - W4K/3_PA protocol/"
     process_participant(path, v_dir, 'PA')
+
 
 def process_all_pa():
     root = tk.Tk()
