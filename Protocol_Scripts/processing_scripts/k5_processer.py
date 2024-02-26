@@ -156,6 +156,7 @@ def process_flags(log_path, prot_date):
         if isinstance(aTime, time):
             # Get start time of flag
             flag_start = str(prot_date.date()) + " " + str(log.iloc[i, 4])
+
             flag_start = datetime.strptime(flag_start, '%Y-%m-%d %H:%M:%S')
             # Get end time of flag
             flag_end = str(prot_date.date()) + " " + str(log.iloc[i, 5])

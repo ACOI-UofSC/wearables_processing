@@ -48,7 +48,8 @@ def extract_time_off(data):
     # First check if they wore the watch all night
     # data.iloc[1,0] corresponds to a question asking if the watch was worn
     # all night. If it's value is no then there are times to be split
-    if data.iloc[1,0].lower() == 'no': 
+
+    if data.iloc[1,0].lower() == 'no':
         # Select the columns that contain wear times
         data = data.iloc[1, [4, 6, 8]].dropna()
         for value in data:
@@ -115,6 +116,7 @@ def generate_off_times(data, device, a_date):
         wearable_off = add_date(wearable_off, a_date)
     else :
         # Wearable wasn't used for this experiment. It's off time should be all the night long
+
         time_off = pd.date_range(datetime.combine(a_date.date(), time(hour=19)), datetime.combine((a_date + timedelta(hours=24)).date(), time(hour=10)), freq='30T')
         wearable_off = pd.DataFrame(None, columns=['Start', 'End'])
         wearable_off.Start = time_off
@@ -142,11 +144,13 @@ def extract_on_time(data, a_date):
     # Extract the time from the dataframe
     on_time = data[[x for x in data.columns if "put the watches on " in x]].iat[1,0]
     # Convert the time to a datetime
-    on_time = a_date.replace(hour=int(on_time[:2]), minute=int(on_time[3:]))
-    # Since the time was originally dateless, its possible that the device was
-    # put on the following day. Check if this is the case. Increment day if needed.
-    if on_time.hour <= 9:
-        on_time = on_time + timedelta(hours=24)
+    try:
+        on_time = a_date.replace(hour=int(on_time[:2]), minute=int(on_time[3:]))
+        # Since the time was originally dateless, its possible that the device was
+        # put on the following day. Check if this is the case. Increment day if needed.
+        if on_time.hour <= 9:
+            on_time = on_time + timedelta(hours=24)
+    except:pass
     return on_time
 
 
@@ -195,7 +199,7 @@ def generate_wearsheet(a_date):
     # possible device
     time_np = np.ones([time_index.shape[0], 6])
     # Merge time index and zeros array into a dataframe
-    time_df = pd.DataFrame(time_np, columns=['Actigraph On', 'Actiheart On', 'Apple On', 'Fitbit On', 'Garmin On', 'In Bed'], index=time_index)
+    time_df = pd.DataFrame(time_np, columns=['Actigraph On', 'Actiheart On', 'Axivity On', 'Apple On', 'Fitbit On', 'Garmin On', 'Pixel On', 'In Bed'], index=time_index)
     return time_df
     
 
@@ -240,25 +244,30 @@ def process_daily_diary(in_path, a_date, out_path):
     data = pd.read_csv(in_path, skiprows=1)
     # Extract each device off times:
     actigraph = generate_off_times(data, 'USC activity', a_date)
+    axivity = generate_off_times(data, 'USC activity', a_date)
     actiheart = generate_off_times(data, 'heart rate', a_date)
     apple = generate_off_times(data, 'Apple', a_date)
     fitbit = generate_off_times(data, 'Fitbit', a_date)
     garmin = generate_off_times(data, 'Garmin', a_date)
+    pixel = generate_off_times(data, 'Pixel', a_date)
     # Extract time the devices were put on the participant and bedtimes
     wear_start = extract_on_time(data, a_date)
     bed_times = extract_bed_time(data, a_date)
     # Generate wear sheet
     wear_sheet = generate_wearsheet(a_date)
     # Add each device's off time to sheet
+
     wear_sheet = populate_wearsheet(wear_sheet, actigraph, wear_start, 'Actigraph On')
+    wear_sheet = populate_wearsheet(wear_sheet, axivity, wear_start, 'Axivity On')
     wear_sheet = populate_wearsheet(wear_sheet, actiheart, wear_start, 'Actiheart On')
     wear_sheet = populate_wearsheet(wear_sheet, apple, wear_start, 'Apple On')
     wear_sheet = populate_wearsheet(wear_sheet, fitbit, wear_start, 'Fitbit On')
     wear_sheet = populate_wearsheet(wear_sheet, garmin, wear_start, 'Garmin On')
+    wear_sheet = populate_wearsheet(wear_sheet, pixel, wear_start, 'Pixel On')
     # Add the bedtime to the sheet
     wear_sheet = populate_wearsheet(wear_sheet, bed_times, wear_start, 'In Bed')
     # Insert notes
-    wear_sheet = extract_extra_notes(data, wear_sheet)
+    #wear_sheet = extract_extra_notes(data, wear_sheet)
     # Save data as a csv
     wear_sheet.to_csv(out_path)
 

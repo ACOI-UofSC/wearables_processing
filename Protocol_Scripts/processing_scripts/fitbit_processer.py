@@ -38,7 +38,10 @@ def timestamp_fitbit(accel_file, hr_file, out_path, participant_id):
     # Read in Heart Rate File
     hr_list = []
     for file in hr_file:
-        hr_list.append(pd.read_csv(file, header=None, names=['Counter', 'Time', 'Heart Rate'], usecols=[1,2], parse_dates=[0], date_parser=lambda x: datetime.fromtimestamp(int(x)/1000)))
+        try:
+            hr_list.append(pd.read_csv(file, header=None, names=['Counter', 'Time', 'Heart Rate'], usecols=[1,2], parse_dates=[0], date_parser=lambda x: datetime.fromtimestamp(int(x)/1000)))
+            print(hr_list)
+        except:pass
 
     if len(hr_list) > 1 :
         hr_data = pd.concat(hr_list, ignore_index=True)

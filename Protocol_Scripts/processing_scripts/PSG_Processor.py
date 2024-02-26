@@ -20,8 +20,10 @@ def psg_process(participant_num, psg_path, psg_summary, psg_data, start, end):
     # Just try to read in the PSG file for now.
     file_path = psg_data
     new_path = psg_path + participant_num + "ebe_no_head.txt"
-
+    print("**Debug***")
+    print("New Path= ",new_path)
     original = open(file_path, mode='r')
+    print(original)
     no_head = open(new_path, mode='w')
 
     head_count = 0
@@ -70,11 +72,21 @@ def psg_process(participant_num, psg_path, psg_summary, psg_data, start, end):
         line = file.readline()
     # The line following sleep summary is the time that the lights were turned off.
     time_out = file.readline()[-9:].strip()
+
     file.close()
     # print(date)
+    while not time_out:
+        # If the last 9 characters of the line are blank, read the next line
+        time_out = file.readline()[-9:].strip()
     ref_time = datetime.datetime.strptime(date + time_out, '%m/%d/%Y%H:%M:%S')
+
     if 0 <= ref_time.hour <= 6:
         ref_time += datetime.timedelta(hours=24)
+
+
+
+
+
     # print(f"Lights out at {ref_time}")
 
     # In[19]:
@@ -101,16 +113,20 @@ def psg_process(participant_num, psg_path, psg_summary, psg_data, start, end):
         new_time = ref_time - (out_index - i) * epoch_len
         timestamped_psg.append([new_time, psg_np[i, 0], psg_np[i, 1], psg_np[i, 2]])
 
+
+
     # Use a for loop to add the entries after the time went out
     # Count counts how many epochs have passed since the lights went out
     count = 0
     for i in range(out_index, epoch_num):
         new_time = ref_time + count * epoch_len
         timestamped_psg.append([new_time, psg_np[i, 0], psg_np[i, 1], psg_np[i, 2]])
+
         count += 1
 
     psg_final = pd.DataFrame(timestamped_psg, columns=['Time', 'Epoch #', "BP", "Stg"])
     psg_final = psg_final.loc[(psg_final['Time'] >= start) & (psg_final['Time'] <= end), :]
+    
 
     file_path = psg_path + participant_num + "_time_stamped.csv"
     psg_final.to_csv(file_path, index=False)

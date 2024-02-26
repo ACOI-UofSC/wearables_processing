@@ -3,8 +3,8 @@ from datetime import timedelta
 import numpy as np
 from .data_summary import plot_accel, plot_hr_pa, plot_hr
 from .merge_data import add_activity_lables
-
-accelerometers = ["Fitbit", 'Apple', "Garmin", "Actigraph"]
+import os
+accelerometers = ["Fitbit", 'Apple', "Garmin", "Actigraph", "Pixel", "Axivity"]
 gt_hr = ["Actiheart", "Kubios"]
 labels = ["K5"]
 # Function that takes as input the aligned data from a PA trial.
@@ -17,8 +17,10 @@ def micro_remove(a_time):
 
 def add_column_names(a_data, a_device):
     a_list = []
-    for column in a_data.columns:
-        a_list.append(a_device + " " + column)
+    try:
+        for column in a_data.columns:
+            a_list.append(a_device + " " + column)
+    except:pass
     return a_list
 
 def drop_time_columns(some_data):
@@ -96,10 +98,12 @@ def agg_accelerometers(data, device):
 
     data["Time"] = data["Time"].apply(micro_remove)
     accel_data = data[accel_cols].dropna()
-    accel_metrics = calc_accel_metrics(accel_data, device)
 
-    accel_mad = calc_mad(accel_data, device)
-    return accel_metrics.merge(accel_mad, how='left', left_on='Time', right_on=accel_mad.index)
+    accel_metrics = calc_accel_metrics(accel_data, device)
+    try:
+        accel_mad = calc_mad(accel_data, device)
+        return accel_metrics.merge(accel_mad, how='left', left_on='Time', right_on=accel_mad.index)
+    except: pass
 
 def agg_hr(data, device):
     hr_cols = ['Time', 'Heart Rate', "HR Low", 'HR High', "HR Change"]
@@ -135,30 +139,50 @@ def agg_to_sec(devices, path, participant_num, protocol="Sleep", activities=None
     for device in devices:
         print(f"Device: {device[0]}")
         if device[0] in accelerometers:
+
             aggregate_data.append(agg_accelerometers(device[1], device[0]))
+
             # Merge Heart rate with accelerometer. ALl accelerometers but Actigraph have HR
             if device[0] != "Actigraph":
-                aggregate_data[-1] = aggregate_data[-1].merge(agg_hr(device[1], device[0]), on="Time", how='left')
+                try:
+                    aggregate_data[-1] = aggregate_data[-1].merge(agg_hr(device[1], device[0]), on="Time", how='left')
+                except:pass
         elif device[0] in gt_hr:
             aggregate_data.append(agg_hr(device[1], device[0]))
         elif device[0] in labels:
             aggregate_data.append(agg_labels(device[1]))
         elif device[0] == 'PSG' or device[0] == "Actiheart Sleep":
             aggregate_data.append(device[1])
-        aggregate_data[-1].columns = add_column_names(aggregate_data[-1], device[0])
+        try:
+            aggregate_data[-1].columns = add_column_names(aggregate_data[-1], device[0])
+        except:pass
 
     merged_data = aggregate_data.pop(0)
     for device in aggregate_data:
-        merged_data = merged_data.merge(device, left_on=merged_data.columns[0], right_on=device.columns[0], how='left')
+        try:
+            print(merged_data.columns[0])
+            print(device.columns[0])
+            merged_data = merged_data.merge(device, left_on=merged_data.columns[0], right_on=device.columns[0], how='left')
+        except: pass
     #agg_data.drop(columns=time_drop, inplace=True)
+    print("**DEBUG****")
+    print(merged_data)
+
+
     merged_data.drop_duplicates(inplace=True)
+
+
+
     merged_data.drop(columns=drop_time_columns(merged_data), inplace=True)
     merged_data.rename(columns={merged_data.columns[0] : 'Time'}, inplace=True)
+
 
     # Plot ACCELEROMETERS
     plot_accel(merged_data, path + "/" + participant_num, protocol, activities, flags)
     # Plot HR
     if protocol == "PA":
+        print("Printing K5")
+
         plot_hr_pa(merged_data, path + "/" + participant_num, activities, path + "/K5 data/Processed Data/" + participant_num + "_v02.png")
     else:
         plot_hr(merged_data, path, participant_num, protocol)
@@ -167,5 +191,9 @@ def agg_to_sec(devices, path, participant_num, protocol="Sleep", activities=None
 
     if protocol == 'PA':
         merged_data = add_activity_lables(merged_data, activities, flags)
+
+
+
     merged_data.to_csv(path + "/" + participant_num + "_agg.csv", index=False)
+
 

@@ -37,6 +37,7 @@ def process_actiheart(hr_files, shift_file, folder_path, participant_num, part_a
     heart_data.drop(columns={'Movement', 'Status'}, inplace=True)
     # Add date to Time column
     # Add hour, minute and seconds to date
+    
     heart_data['Time'] = heart_data["Time"].apply(lambda x: trial_start.replace(hour=int(x[:2]), minute=int(x[3:5]), second=int(x[6:]), microsecond=0))
     if protocol[:2] == 'FL':
         # Need to determine when a new day occurs if test runs over night

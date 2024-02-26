@@ -67,6 +67,9 @@ def hr_helper_sum(data, device, axis, start, end):
     elif device == "Fitbit":
         time_name = 'Time'
         p_color = 'Red'
+    elif device == "Pixel":
+        time_name = 'Time'
+        p_color = 'Black'
     else:
         time_name = "Time"
         p_color = "green"
@@ -99,7 +102,9 @@ stats = {
     1: ("Actiheart", 50),
     2: ("Apple", 50),
     3: ("Garmin", 25),
-    4: ("Fitbit", 50)
+    4: ("Fitbit", 50),
+    5: ("Pixel", 50),
+    6: ("Axivity", 100)
 }
 
 
@@ -119,7 +124,7 @@ def summarize(device, path, data, start, end, fitabase=[]):
             + f"readings for this trial. \nIf the device produces a heart rate reading every 5 seconds there should be {length.total_seconds() // 5}"
             + f" Heart rate readings\n\n")
 
-    elif device >= 1:
+    elif device >= 1 and device < 6:
         summary.write(
             f"Trial Length {length}\n\nThe device collects at {str(stats[device][1])} hz. There should be {accel_num} "
             + f"readings for this trial. \nIf the device produces a heart rate reading each second there should be {length.total_seconds()}"
@@ -132,7 +137,7 @@ def summarize(device, path, data, start, end, fitabase=[]):
     # Rename the time column to time
     data = data.rename(columns={data.columns[0]: "Time"})
     # Now rename actigraph columns to match rest of devices
-    if device == 0:
+    if device == 0 or device==6:
         data.rename(columns={data.columns[2]: "X", data.columns[3]: "Y", data.columns[4]: "Z"}, inplace=True)
     # First select the data specific to the trial
 
@@ -141,27 +146,27 @@ def summarize(device, path, data, start, end, fitabase=[]):
     data['Y'] = pd.to_numeric(data['Y'])
     data['Z'] = pd.to_numeric(data['Z'])
 
-    if device >= 1:
+    if device >= 1 and device<6:
         data['Heart Rate'] = pd.to_numeric(data['Heart Rate'])
-        summary.write(
-            data[["Time", "X", "Y", "Z", "Heart Rate"]].describe(datetime_is_numeric=True).to_string())
+        summary.write(data[["Time", "X", "Y", "Z", "Heart Rate"]].describe().to_string())
     else:
-        summary.write(
-            data[["Time", "X", "Y", "Z"]].describe(datetime_is_numeric=True).to_string())
+        summary.write(data[["Time", "X", "Y", "Z"]].describe().to_string())
 
     # Grab accelerometer and heart rate data from device if it has it
-    accel = data.loc[(data['Time'] >= start) & (data['Time'] <= end), ["Time", "X", "Y", "Z"]].dropna(axis=0)
-    # Plot accelerometer data
-    plt.figure(figsize=(25, 15))
-    plt.plot(accel['Time'], accel['X'], label="X")
-    plt.plot(accel['Time'], accel['Y'], label="Y")
-    plt.plot(accel['Time'], accel['Z'], label="Z")
-    plt.legend()
-    plt.xlim([start, end])
-    plt.savefig(path + "_xyz.png")
-    plt.close()
+    try:
+        accel = data.loc[(data['Time'] >= start) & (data['Time'] <= end), ["Time", "X", "Y", "Z"]].dropna(axis=0)
+        # Plot accelerometer data
+        plt.figure(figsize=(25, 15))
+        plt.plot(accel['Time'], accel['X'], label="X")
+        plt.plot(accel['Time'], accel['Y'], label="Y")
+        plt.plot(accel['Time'], accel['Z'], label="Z")
+        plt.legend()
+        plt.xlim([start, end])
+        plt.savefig(path + "_xyz.png")
+        plt.close()
+    except:pass
 
-    if device >= 1:
+    if device >= 1 and device < 6:
         fig, ax = plt.subplots(figsize=(25, 15))
         hr_helper_sum(data, stats[device][0], ax, start, end)
         if len(fitabase) > 0:
@@ -183,8 +188,10 @@ def hr_helper(data, device, axis):
         p_color = "orange"
     elif device == "Garmin":
         p_color = "green"
+    elif device == "Fitbit":
+        p_color = "red"
     else:
-        p_color = "Red"
+        p_color = "black"
 
     # flagged data
     flag = data
@@ -228,14 +235,22 @@ def plot_hr_pa(data, path, activities, k5):
                        horizontalalignment='center')
     # Save figure
     fig_hr.savefig(path + "_hr_fig.png")
-
+    print("Printing data columns")
+    print(data.columns)
     # Read in k5 data
-    if "K5 VO2/Kg" in data.columns:
-        k5_data = data[["Time", "K5 VO2/Kg"]].dropna(axis=0)
+    if "K5 VO2/Kg" or "K5 VO2/kg" in data.columns:
+        try:
+            k5_data = data[["Time", "K5 VO2/Kg"]].dropna(axis=0)
+        except:k5_data = data[["Time", "K5 VO2/kg"]].dropna(axis=0)
+
         # Create new axis for data
         ax_o2kg = ax_hr.twinx()
+
         # Plot K5 VO2/KG
-        ax_o2kg.plot(k5_data['Time'], k5_data['K5 VO2/Kg'], label="V02/kg", color='purple')
+        try:
+            ax_o2kg.plot(k5_data['Time'], k5_data['K5 VO2/Kg'], label="V02/kg", color='purple')
+        except:
+            ax_o2kg.plot(k5_data['Time'], k5_data['K5 VO2/kg'], label="V02/kg", color='purple')
         fig_hr.savefig(k5)
     plt.close('all')
 
@@ -249,7 +264,7 @@ def plot_hr(data, path, part_num, protocol, rem_flags=False):
                     # Plot a bland altman plot
                     fig, ax = plt.subplots(figsize=(10, 8))
                     sm.graphics.mean_diff_plot(hr[device], hr["Kubios Medium Mean HR"], ax=ax)
-                    plt.savefig(path + "/" + part_num + "_" + device[:-16] + "_ba.jpg", bbox_inces='tight')
+                    plt.savefig(path + "/" + part_num + "_" + device[:-16] + "_ba.jpg", bbox_inches='tight')
                     plt.close(fig)
     elif protocol[:2] == "FL":
         if "Actiheart Mean Heart Rate" in data.columns:
@@ -263,18 +278,21 @@ def plot_hr(data, path, part_num, protocol, rem_flags=False):
                         out_path = path + "/" + part_num + "_" + device[:-16] + "_ba_no_flags.jpg"
                     # Plot a bland altman plot
                     fig, ax = plt.subplots(figsize=(10, 8))
-                    sm.graphics.mean_diff_plot(hr[device], hr["Actiheart Mean Heart Rate"], ax=ax)
+                    try:
+                        sm.graphics.mean_diff_plot(hr[device], hr["Actiheart Mean Heart Rate"], ax=ax)
+                    except:pass
                     plt.savefig(out_path, bbox_inces='tight')
                     plt.close(fig)
 
 
 # This function plots the ENMO and MAD for each wearable device.
 def plot_accel(data, path, protocol='PA', activities=None, flags=None):
-    device_color = {"Actigraph": "blue", "Apple": "orange", "Garmin": "green", "Fitbit": "red"}
+    device_color = {"Actigraph": "blue", "Apple": "orange", "Garmin": "green", "Fitbit": "red", "Pixel": "black", "Axivity": "purple"}
     # Initialize 2 plots. One for ENMO and one for MAD.
     fig, ax = plt.subplots(figsize=(25, 15))
     fig2, ax2 = plt.subplots(figsize=(25, 15))
     # Plot MAX ENMO and MAD per second
+
     for device in data.columns:
         if " Max ENMO" in device:
             ax.plot(data['Time'], data[device], label=device[:-9], color=device_color[device[:-9]])
@@ -302,8 +320,8 @@ def plot_accel(data, path, protocol='PA', activities=None, flags=None):
                          horizontalalignment='center')
 
     # Save both figures
-    fig.savefig(path + "_ENMO_fig.png")
-    fig2.savefig(path + "_MAD_fig.png")
+    fig.savefig(path + "_MAD_fig.png")
+    fig2.savefig(path + "_ENMO_fig.png")
     # Close both figures
     plt.close('all')
 

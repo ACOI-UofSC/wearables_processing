@@ -1,5 +1,9 @@
 import argparse
 from Protocol_Scripts import process_protocol, edf_convert
+import warnings
+
+# Ignore all warnings
+warnings.filterwarnings("ignore")
 
 parser = argparse.ArgumentParser(prog='W4K_Processing', description='A program that is used to process W4K protocols')
 
@@ -27,6 +31,17 @@ elif args.protocol == 'pa':
         process_protocol.process_pa()
 elif args.protocol == 'fl':
     process_protocol.process_fl()
-
+elif args.protocol=='sleep_select':
+    process_protocol.process_select_sleep_participants()
+elif args.protocol=='fl_select':
+    process_protocol.process_select_fl_participants()
+elif args.protocol=='pa_select':
+    process_protocol.process_select_pa_participants()
+elif args.protocol=='process_all_sleep':
+    process_protocol.process_all_sleep()
+elif args.protocol=='process_all_pa':
+    process_protocol.process_all_pa()
+elif args.protocol=='process_all_fl':
+    process_protocol.process_all_fl()
 else:
     raise ValueError("INVALID ARGUMENT. python process_participant.py MUST BE FOLLOWED BY sleep OR pa OR fl")

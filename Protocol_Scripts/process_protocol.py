@@ -8,7 +8,9 @@ from datetime import datetime, timedelta
 from .processing_scripts.apple_processer import process_apple
 from .processing_scripts.garmin_processer import fit_to_csv, process_garmin
 from .processing_scripts.fitbit_processer import timestamp_fitbit, combine_fitbit
+from .processing_scripts.pixel_processor import timestamp_pixel, combine_pixel
 from .processing_scripts.actigraph_processer import process_actigraph
+from .processing_scripts.axivity_processer import process_axivity
 from .processing_scripts.PSG_Processor import psg_process
 from .processing_scripts.Kubios_Processor import read_kubios
 from .processing_scripts.data_summary import summarize
@@ -18,8 +20,8 @@ from .processing_scripts.k5_processer import process_k5, process_labels, process
 from .processing_scripts.actiheart_processer import process_actiheart, plot_actiheart_hr, process_actiheart_sleep
 from .processing_scripts.process_camp_diary import process_observations
 from .processing_scripts.process_home_diary import process_daily_diary
-
-
+from .processing_scripts.add_fitabase_column import gen_file_fitabase_column_agg
+from .processing_scripts.add_fitabase_column import gen_file_fitabase_column_aligned
 def process_participant(in_path, v_drive, protocol='PA'):
     # Pulls meta data from protocol tracking sheet for particular participant
     # List used to keep track of devices processed
@@ -63,11 +65,21 @@ def process_participant(in_path, v_drive, protocol='PA'):
             trial_start = activities['1'][1]
             trial_end = activities[str(len(activities))][2]
     elif protocol[:2] == 'FL':
-        participant_num = in_path[-4:]
-        print(f'Free Living Participant Number {participant_num}')
-        tracking_sheet = pd.read_excel(v_drive + "Free-living master tracking.xlsx", skiprows=1)
-        # Grab participant age and date of the protocol
-        participant_age = math.floor(tracking_sheet.loc[tracking_sheet["WDID"] == float(participant_num), "AGE AT PROTOCOL DATE"].iat[0])
+        try:
+            participant_num = in_path[-4:]
+            print(f'Free Living Participant Number {participant_num}')
+            tracking_sheet = pd.read_excel(v_drive + "Free-living master tracking.xlsx", skiprows=1)
+            # Grab participant age and date of the protocol
+            participant_age = math.floor(
+                tracking_sheet.loc[tracking_sheet["WDID"] == float(participant_num), "AGE AT PROTOCOL DATE"].iat[0])
+        except:
+            participant_num = in_path[-3:]
+            print(f'Free Living Participant Number {participant_num}')
+            tracking_sheet = pd.read_excel(v_drive + "Free-living master tracking.xlsx", skiprows=1)
+            # Grab participant age and date of the protocol
+            participant_age = math.floor(
+            tracking_sheet.loc[tracking_sheet["WDID"] == float(participant_num), "AGE AT PROTOCOL DATE"].iat[0])
+
 
         # Define path to the observation form
         activities = None
@@ -135,7 +147,7 @@ def process_participant(in_path, v_drive, protocol='PA'):
     fb_hr_path = glob.glob(fitbit_path + "/Batch data/Heart_combined*.csv")
     # If there are files process them
     # fitabase hr for comparison
-    fitabase = glob.glob(fitbit_path + "/Fitabase/*_hr.csv" )
+    fitabase = glob.glob(fitbit_path + "/Fitabase/*_hr.csv")
     if len(fb_accel_path) > 0 and len(fb_hr_path) > 0:
         print("Begin Fitbit Processing")
 
@@ -150,6 +162,7 @@ def process_participant(in_path, v_drive, protocol='PA'):
                                        infer_datetime_format=True)
             fitbit_hr = pd.read_csv(fitbit_path + participant_num + "_heart.csv", parse_dates=['Time'],
                                     infer_datetime_format=True)
+
         devices.append(
             combine_fitbit(fitbit_accel, fitbit_hr, fitbit_path, participant_num, participant_age, trial_start,
                            trial_end, "sleep"))
@@ -157,8 +170,46 @@ def process_participant(in_path, v_drive, protocol='PA'):
         output_path = fitbit_path + "/Processed Data/" + participant_num
 
         summarize(4, output_path, devices[-1][1], trial_start, trial_end, fitabase)
+
+
+
         print("FINISHED")
 
+
+    # Process Pixel data
+    if protocol == "Sleep":
+
+        pixel_path = in_path + "/Pixel/"
+    elif protocol == "PA" or protocol[:2] == 'FL':
+        pixel_path = in_path + "/Pixel data/"
+    # Use glob to get list of accel and heart rate files
+    px_accel_path = glob.glob(pixel_path + "/Batch data/Accel*.csv")
+    px_hr_path = glob.glob(pixel_path + "/Batch data/Heart_combined*.csv")
+    # If there are files process them
+    # fitabase hr for comparison
+    fitabase = glob.glob(fitbit_path + "/Fitabase/*_hr.csv")
+    if len(px_accel_path) > 0 and len(px_hr_path) > 0:
+        print("Begin Pixel Processing")
+
+        # Check if the correct timestamp files already exist
+        if not os.path.exists(pixel_path + participant_num + "_heart.csv"):
+            pixel_accel, pixel_hr = timestamp_pixel(px_accel_path, px_hr_path, pixel_path, participant_num)
+
+        else:
+            # The files have been timestamped. Just read them in and combine them
+            pixel_accel = pd.read_csv(pixel_path + participant_num + "_accel.csv", parse_dates=['Time'])
+
+            pixel_hr = pd.read_csv(pixel_path + participant_num + "_heart.csv", parse_dates=['Time'])
+
+        devices.append(
+            combine_pixel(pixel_accel, pixel_hr, pixel_path, participant_num, participant_age, trial_start,
+                               trial_end, "sleep"))
+        print("Writing Pixel Summary")
+        output_path = pixel_path + "/Processed Data/" + participant_num
+
+        summarize(5, output_path, devices[-1][1], trial_start, trial_end, fitabase)
+
+        print("FINISHED")
     # Process Garmin Data
     if protocol == "Sleep":
         garmin_path = in_path + "/Garmin/"
@@ -185,6 +236,7 @@ def process_participant(in_path, v_drive, protocol='PA'):
         summarize(3, output_path, devices[-1][1], trial_start, trial_end)
         print("FINISHED")
 
+
     # Process Actigraph
     if protocol == "Sleep":
         actigraph_path = in_path + "/ActiGraph/csv/"
@@ -205,6 +257,31 @@ def process_participant(in_path, v_drive, protocol='PA'):
                 os.mkdir(output_path[:-5])
         summarize(0, output_path, devices[0][1], trial_start, trial_end)
         print("Finished")
+
+
+    # Process Axivity
+    if protocol == "Sleep":
+        axivity_path = in_path + "/Axivity/csv/"
+    elif protocol == "PA" or protocol[:2] == 'FL':
+            axivity_path = in_path + "/Axivity data/csv/"
+    # Get list of paths to actigraph
+    axiv_files = glob.glob(axivity_path + "*axiv.csv")
+
+    if len(axiv_files) > 0:
+        print("Processing Axivity")
+        devices.insert(0, (process_axivity(axiv_files, trial_start, trial_end)))
+        print("Writing Axivity Summary")
+        output_path = axivity_path[:-5] + "/Processed Data/" + participant_num
+        if os.path.isdir(output_path[:-1 * (len(participant_num) + 1)]) is False:
+            os.mkdir(output_path[:-1 * (len(participant_num) + 1)])
+        elif protocol == "PA":
+            if os.path.isdir(output_path[:-5]) is False:
+                os.mkdir(output_path[:-5])
+        summarize(6, output_path, devices[0][1], trial_start, trial_end)
+        print("Finished")
+
+
+
 
     # Process Actiheart
     actiheart_path = in_path + "/ActiHeart data/"
@@ -234,9 +311,12 @@ def process_participant(in_path, v_drive, protocol='PA'):
         devices.append(psg_process(participant_num, psg_path, psg_summary[0], psg_labels[0], trial_start, trial_end))
         print("Finished Processing")
     # Process Actiheart Sleep files
-    actiheart_sleep_files = glob.glob(actiheart_path + "*sleep.xlsx")
-    if len(actiheart_sleep_files) > 0:
-        devices.append(process_actiheart_sleep(actiheart_sleep_files, trial_start, trial_end))
+    try:
+        actiheart_sleep_files = glob.glob(actiheart_path + "*sleep.xlsx")
+        if len(actiheart_sleep_files) > 0:
+            devices.append(process_actiheart_sleep(actiheart_sleep_files, trial_start, trial_end))
+    except:pass
+
 
     # Process the Kubios Files
     kubios_path = psg_path + "Kubios Output/"
@@ -265,10 +345,44 @@ def process_participant(in_path, v_drive, protocol='PA'):
         print("FINISHED")
     print("Merging DataFrames")
     # Merge all dataframes into one
+
     align(devices, in_path, participant_num, protocol, activities, flags)
     print("Finished")
     print("Aggregating Data")
+
+
+    print(in_path)
     agg_to_sec(devices, in_path, participant_num, protocol, activities, flags)
+
+    #Get the Fitabase HR and put it into align and agg for Sleep
+
+    if(protocol=="Sleep"):
+        fitbit_path = in_path + "/Fitbit/"
+        fitabase_hr = fitbit_path + "Fitabase/" + participant_num + "_hr.csv"
+        agg_hr = in_path + "/" + participant_num + "_agg.csv"
+        aligned_hr = in_path + "/" + participant_num + "_aligned.csv"
+        gen_file_fitabase_column_agg(agg_hr, fitabase_hr)
+        gen_file_fitabase_column_aligned(aligned_hr,fitabase_hr)
+    elif(protocol=="PA"):
+        fitbit_path = in_path + "/Fitbit data/"
+        fitabase_hr = fitbit_path + "Fitabase/" + participant_num + "_hr.csv"
+        agg_hr = in_path + "/" + participant_num + "_agg.csv"
+        aligned_hr=in_path + "/" + participant_num + "_aligned.csv"
+        gen_file_fitabase_column_agg(agg_hr, fitabase_hr)
+        gen_file_fitabase_column_aligned(aligned_hr,fitabase_hr)
+
+    elif(protocol[:2] == 'FL'):
+
+        fitabase_hr= in_path + "/Fitbit data/"+"Fitabase/"+participant_num + "_hr.csv"
+        agg_hr=in_path+"/"+participant_num+"_agg.csv"
+
+
+        aligned_hr = in_path + "/" + participant_num + "_aligned.csv"
+
+        try:
+            gen_file_fitabase_column_agg(agg_hr, fitabase_hr)
+            gen_file_fitabase_column_aligned(aligned_hr, fitabase_hr)
+        except:pass
 
     print("ALL DONE")
 
@@ -285,6 +399,19 @@ def process_sleep():
         v_dir = "V:/ACOI/R01 - W4K/1_Sleep Study/"
     process_participant(path, v_dir, 'Sleep')
 
+
+
+
+def process_pa():
+    root = tk.Tk()
+    root.winfo_toplevel().title("Select a Participant Folder")
+    root.withdraw()
+    path = filedialog.askdirectory()
+    v_dir = "V:/R01 - W4K/3_PA protocol/"
+    if not os.path.isdir(v_dir):
+        v_dir = "V:/ACOI/R01 - W4K/3_PA protocol/"
+    process_participant(path, v_dir, 'PA')
+
 def process_all_sleep():
     root = tk.Tk()
     root.winfo_toplevel().title("Select directories")
@@ -297,20 +424,41 @@ def process_all_sleep():
     v_dir = "V:/R01 - W4K/1_Sleep Study/"
     if not os.path.isdir(v_dir):
         v_dir = "V:/ACOI/R01 - W4K/1_Sleep Study/"
-    # Process all participants:
+
+    # Process all Sleep participants with Garmin
+    participants_not_processed = []
     for file in files:
-        process_participant(file, v_dir, 'Sleep')
-
-def process_pa():
-    root = tk.Tk()
-    root.winfo_toplevel().title("Select a Participant Folder")
-    root.withdraw()
-    path = filedialog.askdirectory()
-    v_dir = "V:/R01 - W4K/3_PA protocol/"
-    if not os.path.isdir(v_dir):
-        v_dir = "V:/ACOI/R01 - W4K/3_PA protocol/"
-    process_participant(path, v_dir, 'PA')
-
+        participant=file[-10:]
+        if float(participant)>7518083022:
+            garmin_path = file+f"/Garmin/"
+            if os.path.exists(garmin_path):
+                files = 0
+                for filename in os.listdir(garmin_path):
+                    file_path = os.path.join(garmin_path, filename)
+                    # Check if the file is a regular file and its extension is not ".fit"
+                    if os.path.isfile(file_path) and not filename.endswith('.fit'):
+                        files=files+1
+                        # Delete the file
+                        os.remove(file_path)
+                        print(f"Deleted file: {filename}")
+                    elif os.path.isfile(file_path) and filename.endswith('.fit'):
+                        files = files + 1
+                if files>0 :
+                    try:
+                        process_participant(file, v_dir, 'Sleep')
+                    except:
+                        print(f"could not process {participant}")
+                        participants_not_processed.append(participant)
+                else:
+                    print(f"No Garmin Files ")
+            else:
+                print(f"No garmin Path could not process {participant}")
+                participants_not_processed.append(participant)
+    print("Participants not processed: ")
+    print(participants_not_processed)
+    # Process all participants:
+    # for file in files:
+    #     process_participant(file, v_dir, 'Sleep')
 def process_all_pa():
     root = tk.Tk()
     root.winfo_toplevel().title("Select directories")
@@ -324,9 +472,124 @@ def process_all_pa():
     v_dir = "V:/R01 - W4K/3_PA protocol/"
     if not os.path.isdir(v_dir):
         v_dir = "V:/ACOI/R01 - W4K/3_PA protocol/"
-    # Process all participants:
+
+    # Process all PA participants with Garmin
+    participants_not_processed = []
     for file in files:
-        process_participant(file, v_dir, 'PA')
+        participant = file[-4:]
+        garmin_path = file+f"/Garmin data/"
+        if os.path.exists(garmin_path):
+            files=0
+            for filename in os.listdir(garmin_path):
+                file_path = os.path.join(garmin_path, filename)
+                # Check if the file is a regular file and its extension is not ".fit"
+                if os.path.isfile(file_path) and not filename.endswith('.fit'):
+                    files=files+1
+                    # Delete the file
+                    os.remove(file_path)
+                    print(f"Deleted file: {filename}")
+                elif os.path.isfile(file_path) and filename.endswith('.fit'):
+                    files = files + 1
+            if files>0:
+                try:
+                    process_participant(file, v_dir, 'PA')
+                except:
+                    print(f"could not process {participant}")
+                    participants_not_processed.append(participant)
+            else:
+                print(f"No Garmin Files")
+
+        else:
+            print(f"No garmin path could not process {participant}")
+            participants_not_processed.append(participant)
+    # # Process all participants:
+    # for file in files:
+    #     process_participant(file, v_dir, 'PA')
+
+def process_all_fl():
+    participants_with_exceptions = []
+    root = tk.Tk()
+    root.winfo_toplevel().title("Select directories")
+    root.withdraw()
+    # Start of dialogue
+    print("Please select the folder housing all the participant folders you wish to process")
+    home_dir = filedialog.askdirectory()
+    files = glob.glob(home_dir + "/[0-9][0-9][0-9][0-9]")
+    print(f"List of participants: {files}")
+    # Get path to V drive
+    v_dir = "V:/R01 - W4K/4_Free Living/"
+    if not os.path.isdir(v_dir):
+        v_dir = "V:/ACOI/R01 - W4K/4_Free Living/"
+    camp_parts_not_processed=[]
+    home_parts_not_processed=[]
+    # Process all PA participants with Garmin
+    for file in files:
+        participant = file[-4:]
+        camp_path=file + f"/Camp/"
+        home_path=file + f"/Home/"
+        camp_garmin_path = camp_path + f"Garmin data/"
+        home_garmin_path = home_path + f"Garmin data/"
+        home_fit_file= home_garmin_path + f"{participant}.fit"
+        if os.path.exists(camp_path):
+            if os.path.exists(camp_garmin_path):
+                files = 0
+                for filename in os.listdir(camp_garmin_path):
+                    file_path = os.path.join(camp_garmin_path, filename)
+                    # Check if the file is a regular file and its extension is not ".fit"
+                    if os.path.isfile(file_path) and not filename.endswith('.fit'):
+                        files = files+1
+                        # Delete the file
+                        os.remove(file_path)
+                        print(f"Deleted file: {filename}")
+                    elif os.path.isfile(file_path) and filename.endswith('.fit'):
+                        files = files + 1
+                if files > 0:
+                    try:
+                        process_participant(file, v_dir, 'FL-camp')
+                    except Exception as e:
+                        camp_parts_not_processed.append(participant)
+                        print(f"Error processing participant {participant} Camp: {e}")
+                else:
+                    print(f"No Garmin File")
+            else:
+                print(f"No Camp Garmin directory for the participant {participant} ")
+                camp_parts_not_processed.append(participant)
+        else:
+            print(f"No Camp directory for the participant {participant}")
+            camp_parts_not_processed.append(participant)
+        if os.path.exists(home_path):
+            if os.path.exists(home_garmin_path):
+                files = 0
+                for filename in os.listdir(home_garmin_path):
+                    file_path = os.path.join(home_garmin_path, filename)
+                    # Check if the file is a regular file and its extension is not ".fit"
+                    if os.path.isfile(file_path) and not filename.endswith('.fit'):
+                        files=files+1
+                        # Delete the file
+                        os.remove(file_path)
+                        print(f"Deleted file: {filename}")
+                    if os.path.isfile(file_path) and filename.endswith('.fit'):
+                        files = files + 1
+
+                if files>0:
+                    try:
+                        process_participant(file, v_dir, 'FL-home')
+                    except Exception as e:
+                        home_parts_not_processed.append(participant)
+                        print(f"Error processing participant {participant} Home: {e}")
+                else:
+
+                    print(f"No Garmin File")
+            else:
+                print(f"No Home Garmin directory for the participant {participant} ")
+                home_parts_not_processed.append(participant)
+        else:
+            print(f"No Home directory for the participant {participant}")
+            home_parts_not_processed.append(participant)
+    print("List of Camp participants with exceptions: ")
+    print(camp_parts_not_processed)
+    print("List of Home participants with exceptions: ")
+    print(home_parts_not_processed)
 
 def process_fl():
     root = tk.Tk()
@@ -336,8 +599,98 @@ def process_fl():
     v_dir = "V:/R01 - W4K/4_Free living/"
     if not os.path.isdir(v_dir):
         v_dir = "V:/ACOI/R01 - W4K/4_Free living/"
-    process_participant(path, v_dir, 'FL-camp')
+    #process_participant(path, v_dir, 'FL-camp')
     process_participant(path, v_dir, 'FL-home')
+
+def process_select_sleep_participants():
+    participants = []
+    files = []
+    home_dir = "V:/ACOI/R01 - W4K/1_Sleep Study/1_Participant Data/"
+    num_of_parts = int(input("Enter the number of parts: "))
+    # Get path to V drive
+    v_dir = "V:/R01 - W4K/1_Sleep Study/"
+    if not os.path.isdir(v_dir):
+        v_dir = "V:/ACOI/R01 - W4K/1_Sleep Study/"
+    for i in range(num_of_parts):
+        participant = input(f"Enter participant {i}: ")
+        participants.append(participant)
+
+    for j in range(len(participants)):
+        file = home_dir + participants[j]
+        files.append(file)
+
+    for file in files:
+        try:
+            process_participant(file, v_dir, 'Sleep')
+        except:
+            pass
+
+
+def process_select_fl_participants():
+    participants = []
+    files = []
+    home_dir = "V:/ACOI/R01 - W4K/4_Free living/Participant Data/"
+    num_of_parts = int(input("Enter the number of parts: "))
+    v_dir = "V:/R01 - W4K/4_Free living/"
+    if not os.path.isdir(v_dir):
+        v_dir = "V:/ACOI/R01 - W4K/4_Free living/"
+    for i in range(num_of_parts):
+        participant = input(f"Enter participant {i}: ")
+        participants.append(participant)
+
+    for j in range(len(participants)):
+        file = home_dir + participants[j]
+        files.append(file)
+
+    for file in files:
+        # try:
+        #     process_participant(file, v_dir, 'FL-camp')
+        # except:
+        #     pass
+        try:
+           process_participant(file, v_dir, 'FL-home')
+        except:pass
+def process_select_pa_participants():
+    participants = []
+    files = []
+    home_dir = "V:/ACOI/R01 - W4K/3_PA protocol/1_Participants/"
+    num_of_parts = int(input("Enter the number of parts: "))
+    v_dir = "V:/ACOI/R01 - W4K/3_PA protocol/"
+    if not os.path.isdir(v_dir):
+        v_dir = "V:/ACOI/R01 - W4K/3_PA protocol/"
+    for i in range(num_of_parts):
+        participant = input(f"Enter participant {i}: ")
+        participants.append(participant)
+
+    for j in range(len(participants)):
+        file = home_dir + participants[j]
+        files.append(file)
+
+    for file in files:
+        try:
+           process_participant(file, v_dir, 'PA')
+        except:pass
+
+def process_select_sleep_participants():
+    participants = []
+    files = []
+    home_dir = "V:/ACOI/R01 - W4K/1_Sleep Study/1_Participant Data/"
+    num_of_parts = int(input("Enter the number of parts: "))
+    v_dir = "V:/ACOI/R01 - W4K/1_Sleep Study/"
+    if not os.path.isdir(v_dir):
+        v_dir = "V:/ACOI/R01 - W4K/1_Sleep Study/"
+    for i in range(num_of_parts):
+        participant = input(f"Enter participant {i}: ")
+        participants.append(participant)
+
+    for j in range(len(participants)):
+        file = home_dir + participants[j]
+        files.append(file)
+
+    for file in files:
+        try:
+           process_participant(file, v_dir, 'Sleep')
+        except:pass
 
 if __name__ == "__main__":
     prot = int(input("Press 1 for Sleep. Press 2 for PA. Press 3 for Free Living: "))

@@ -48,6 +48,7 @@ def process_garmin(data_path, garmin_path, participant_num, part_age, trial_star
     # The Garmin timestamp is the number of seconds that have passed since the founding of Garmin.
     data['record.timestamp[s]'] = data['record.timestamp[s]'].apply(lambda x: timedelta(seconds=x) + garmin_date)
 
+
     # Changes depending on Daylight savings
     date = data.iloc[0, 0]
     if datetime(year=2022, month=3, day=13, hour=2) <= date <= datetime(year=2022, month=11, day=6, hour=2) or \
@@ -58,11 +59,14 @@ def process_garmin(data_path, garmin_path, participant_num, part_age, trial_star
         offset = timedelta(hours=5)
 
     data['record.timestamp[s]'] = data['record.timestamp[s]'].apply(lambda x: x - offset)
-
+    print(data['record.timestamp[s]'])
     # Here I create a smaller dataframe with only the readings that we're interested in
     xyz_df = data.loc[:, ['record.timestamp[s]', 'record.developer.0.SensorAccelerationX_HD[mgn]',
                           'record.developer.0.SensorAccelerationY_HD[mgn]',
                           'record.developer.0.SensorAccelerationZ_HD[mgn]', 'record.heart_rate[bpm]']]
+
+
+
     # Convert that dataframe to a numpy array for faster iteration
     xyz_numpy = xyz_df.to_numpy()
     rows, columns = xyz_numpy.shape
@@ -120,19 +124,22 @@ def process_garmin(data_path, garmin_path, participant_num, part_age, trial_star
         os.mkdir(output_path)
 
     final_df['Time'] = pd.to_datetime(final_df['Time'])
+
     final_df = final_df.loc[(final_df['Time'] >= trial_start) & (final_df['Time'] <= trial_end), :]
 
     # Flag HR
     flagged_hr = flag_hr(final_df, "Garmin", part_age, protocol)
     final_df = final_df.merge(flagged_hr, how='left', on=["Time", "Heart Rate"])
+
     # Calculate vector magnitude and ENMO
     final_df[['X', 'Y', 'Z']] = final_df[['X', 'Y', 'Z']].apply(pd.to_numeric)
-    final_df[['X', 'Y', 'Z']] = final_df[['X', 'Y', 'Z']].applymap(lambda x: x / 1000)
+    final_df[['X', 'Y', 'Z']] = final_df[['X', 'Y', 'Z']].applymap(lambda x: x / 1024)
     mag, enmo = calc_enmo(final_df.loc[:, ["X", "Y", "Z"]])
     final_df.insert(5, "Magnitude", mag)
     final_df.insert(6, "ENMO", enmo)
 
     out_path = output_path + "/" + participant_num + "_garmin.csv"
+
     final_df.to_csv(out_path, index=False)
     return ["Garmin", final_df]
 
