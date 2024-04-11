@@ -1,1 +1,14 @@
-I will add instructions to this file on how to run the program.
+# Run the process_participants.py scripts
+
+1. create conda env
+   conda create --name w4kenv python=3.11
+
+2. install related packages
+   pip install pandas
+   pip install matplotlib
+   pip install statsmodels
+   pip install mne
+   ...
+
+3. run the script:
+   python process_participant.py sleep
