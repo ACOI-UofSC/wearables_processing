@@ -13,7 +13,7 @@ ACCEL_COL_NAMES = ["Timestamp", "x", "y", "z"]
 
 def plot_axiv(filename):
     df = pd.read_csv(filename, header=None, names=ACCEL_COL_NAMES)
-    print(df)
+    #print(df)
 
     df["Norm"] = np.sqrt(df["x"]**2 + df["y"]**2 + df["z"]**2)
 
